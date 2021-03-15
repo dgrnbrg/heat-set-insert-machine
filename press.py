@@ -6,7 +6,7 @@ import solid as s
 import solid.objects as so
 import os
 import solid.utils as su
-from math import pi, sqrt, atan2, asin, tan, cos
+from math import pi, sqrt, atan2, asin, tan, cos, sin
 
 screw_clearance = {
         'm4': 4.5,
@@ -18,7 +18,7 @@ screw_head_sink = {
 }
 screw_nut = {
         'm4': {'width': 7.0, 'depth': 3.6},
-        'm3': {'width': 5.85, 'depth': 2.9}
+        'm3': {'width': 5.7, 'depth': 2.9}
 }
 
 def hex(width, h, fillet_radius = 0.1):
@@ -38,7 +38,8 @@ def rail_section(h):
 
 
 def double_side_rail(h, bottom_thickness=10, holes=None):
-    stack = rail_section(h) + so.rotate((0,0,180))(rail_section(h))
+    section = so.translate((0,5,0))(rail_section(h))
+    stack = section + so.rotate((0,0,180))(section) + so.translate((-8,-5,0))(so.cube((16,10,h)))
     if holes is not None:
         bolt_hole = so.rotate((0,90,0))(so.translate((0,0,-40))(so.cylinder(r=screw_clearance[holes]/2.0, h=80)))
         def mkhole(offset):
@@ -84,10 +85,15 @@ def chamfer_hull(x=False, y=False, z=False, chamfer=1):
         return so.hull()(body)
     return impl
 
+def expand_for_fit(tolerance):
+    def f(scad):
+        return so.minkowski()(scad, so.cube([tolerance]*3))
+    return f
+
 def bracket(bottom_thickness, chamfer, height, clearance, through_offsets, through_screw='m4'):
     body_orig = so.translate((-15,-20,0))(so.cube((30,40,height)))
     body = chamfer_hull(x=True,y=True,z=[1], chamfer=chamfer)(body_orig)
-    rail_hole = so.minkowski()(so.translate((0,0,bottom_thickness))(double_side_rail(height)), so.cube([clearance]*3))
+    rail_hole = so.minkowski()(so.translate((0,0,bottom_thickness))(expand_for_fit(0.3)(double_side_rail(height))), so.cube([clearance]*3))
     body -= so.hole()(rail_hole)
 
     # add mount holes
@@ -129,13 +135,13 @@ def top_bracket(through_screw='m4', chamfer=1, clearance=0.25, bottom_thickness=
     bolt_hole = so.cylinder(r=screw_clearance[through_screw]/2.0, h=bottom_thickness)
     return body - nut_recess - bolt_hole
 
-def pulley_arms(height=40, through_screw='m4', arm_width=15, arm_thickness=7.5, pully_width=10, base_width=30, base_thickness=10):
+def pulley_arms(height=40, through_screw='m4', arm_width=15, arm_thickness=7.5, pully_width=10, base_width=30, base_thickness=10, spin_clearance=0.5):
     arm_base = so.translate((0,-arm_width/2.0,0))(so.cube((arm_thickness, arm_width, 1)))
     arm = so.hull()(so.translate((0,0,height-arm_width/2.0))(so.rotate((0,90,0))(so.cylinder(r=arm_width/2.0, h=arm_thickness))) + arm_base)
     def arms_xf_left(obj):
-        return so.translate((pully_width/2.0,0,0))(obj)
+        return so.translate(((pully_width + spin_clearance)/2.0,0,0))(obj)
     def arms_xf_right(obj):
-        return so.translate((-pully_width/2.0,0,0))(so.rotate((0,0,180))(obj))
+        return so.translate((-(pully_width + spin_clearance)/2.0,0,0))(so.rotate((0,0,180))(obj))
     arms = arms_xf_left(arm) + arms_xf_right(arm)
     plate_orig = so.translate((-base_width/2.0,-base_width/2.0,-base_thickness))(so.cube((base_width, base_width, base_thickness)))
     plate = so.hull()(plate_orig, so.translate((0,0,base_thickness/2.0))(arms_xf_left(arm_base)))
@@ -167,33 +173,59 @@ def pulley(width=10, diameter=30, screw='m4', clearance=0.3, flat=1):
 
 def carriage_plate(dims=(49, 42, 10), chamfer=1, screw_thickness=8, arm_screw='m4', arm_mount_dist=20):
     (x,y,z) = dims
-    plate = so.translate((0,0,z/2.0))(chamfer_hull(x=True,y=True,z=[1])(so.cube(dims, center=True)))
-    head_recess = so.translate((0,0,8))(so.cylinder(r=screw_head_sink['m3']['diameter']/2.0, h=screw_head_sink['m3']['h']*z))
-    bolt_hole = so.translate((0,0,-z))(so.cylinder(r=screw_clearance['m3']/2.0, h=z*2.0))
-    for x in [1,-1]:
-        for y in [1,-1]:
-            plate -= so.translate((y*41.4/2,x*34.8/2,0))(bolt_hole + head_recess)
+    plate = so.translate((0,0,chamfer+z/2.0))(chamfer_hull(x=True,y=True,z=True)(so.cube(dims, center=True)))
+    head_recess = so.translate((0,0,3))(so.cylinder(r=screw_head_sink['m3']['diameter']/2.0, h=screw_head_sink['m3']['h']*z))
+    bolt_hole = so.translate((0,0,-z))(so.cylinder(r=screw_clearance['m3']/2.0, h=z*3.0))
+    for m in [1,-1]:
+        for t in [True, False]:
+            x,y = (m,0)
+            if t:
+                x,y=y,x
+            plate -= so.translate((y*41.0/2,x*34.5/2,0))(bolt_hole + head_recess)
 
     head_recess = so.cylinder(r=screw_head_sink[arm_screw]['diameter']/2.0, h=screw_head_sink[arm_screw]['h']+1)
-    bolt_hole = so.cylinder(r=screw_clearance[arm_screw]/2.0, h=z+chamfer)
+    bolt_hole = so.cylinder(r=screw_clearance[arm_screw]/2.0, h=z+2*chamfer)
     mount_hole = head_recess + bolt_hole
 
     return plate - so.translate((arm_mount_dist/2.0,0,0))(mount_hole) - so.translate((-arm_mount_dist/2.0,0,0))(mount_hole)
 
-def iron_holder(thickness=30, depth=40, length=75, iron_diameter=20, chamfer=1, iron_holder_thickness=5,arm_screw='m4', arm_mount_dist=20, gap=0.75, split_screw='m3'):
-    arm = chamfer_hull(x=True,y=True,z=[1])(so.translate((-thickness/2.0, -depth/2.0, 0))(so.cube((thickness,depth,length))))
-    
-    holder = so.translate((0,0,length+iron_diameter/2.0-iron_holder_thickness/2.0))(so.rotate((0,-90,0))(split_lock(iron_diameter, thickness=iron_holder_thickness, depth=depth, lip=10, chamfer=chamfer, gap=gap, screw=split_screw)))
+def carraige_plate_install_holes(length = 200, angle=15, diameter=screw_head_sink['m3']['diameter']):
+    l = diameter
+    cut = so.cylinder(r=l/2.0, h=1)
+    off1 = length * sin(angle*pi/180)
+    off2 = length * cos(angle*pi/180)
+    body = None
+    for m in [1,-1]:
+        for t in [True, False]:
+            x,y = (m,0)
+            if t:
+                x,y=y,x
+            p1 = so.translate((y*41.0/2,x*34.5/2,0))(cut) 
+            p2 = so.translate((y*(41.0/2+off1),x*(34.5/2+off1),off2))(cut) 
+            p = so.hull()(p1,p2)
+            if body is None:
+                body = p
+            else:
+                body += p
+            
+    return body
 
-    rope_tie = so.translate((0,depth/2.0,length-iron_diameter/2.0-iron_holder_thickness*2.0))(so.rotate((-90,90,0))(arch()))
+def iron_holder(thickness=20, depth=40, length=45, iron_diameter=20.5, chamfer=1, iron_holder_thickness=5,arm_screw='m4', arm_mount_dist=20, gap=5, split_screw='m4', cup_diameter=30, cup_thickness=5):
+    arm = chamfer_hull(x=True,y=True,z=[1])(so.translate((-thickness/2.0, -depth/2.0, 0))(so.cube((thickness,depth,length + cup_diameter))))
+    
+    counterweight_cup = so.translate((0,depth/2.0,length-cup_thickness))(chamfer_hull(x=True,y=True)(so.rotate((90,0,0))(so.cylinder(r=cup_diameter/2.0+cup_thickness, h=depth))) - so.hole()(so.translate((0,depth/2.0-cup_thickness,0))(so.rotate((90,0,0))(so.cylinder(r=cup_diameter/2.0, h=depth)))))
+    holder = so.translate((0,0,cup_diameter+length))(so.rotate((0,-90,0))(split_lock(iron_diameter, thickness=iron_holder_thickness, depth=depth, lip=10, chamfer=chamfer, gap=gap, screw=split_screw)))
+
+    rope_tie = so.translate((0,depth/2.0+chamfer,length/2.0-iron_holder_thickness))(so.rotate((-90,90,0))(arch()))
 
     nut_recess = hex(screw_nut[arm_screw]['width'], screw_nut[arm_screw]['depth'])
     bolt_hole = so.cylinder(r=screw_clearance[arm_screw]/2.0, h=10)
     nut_slide = so.translate((0,-screw_nut[arm_screw]['width']/2.0))(so.cube((thickness, screw_nut[arm_screw]['width'], screw_nut[arm_screw]['depth'])))
     nut_attachment = so.translate((0,0,10))(nut_slide + nut_recess) + bolt_hole
-    return arm + holder - so.translate((0,arm_mount_dist/2.0,0))(nut_attachment) - so.translate((0,-arm_mount_dist/2.0,0))(nut_attachment) + rope_tie
+    plate_install_holes = so.translate((0,0,-0.1))(carraige_plate_install_holes(diameter=4.95))
+    return counterweight_cup + arm + holder - so.translate((0,arm_mount_dist/2.0,0))(nut_attachment) - so.translate((0,-arm_mount_dist/2.0,0))(nut_attachment) + rope_tie - plate_install_holes
 
-def split_lock(diameter, thickness=3, depth=40, lip=10, chamfer=1, gap=2, screw='m3', shape='circle'):
+def split_lock(diameter, thickness=3, depth=40, lip=10, chamfer=1, gap=2, screw='m4', shape='circle'):
     lip_part = so.translate((diameter/2.0,-thickness/2.0,0))(so.cube((lip,thickness,depth)))
     if shape == 'circle':
         hole = so.cylinder(r=diameter/2.0, h=depth*2)
@@ -204,14 +236,14 @@ def split_lock(diameter, thickness=3, depth=40, lip=10, chamfer=1, gap=2, screw=
     holder = so.translate((0,depth/2.0,0))(chamfer_hull(x=True,y=True)(so.rotate((90,0,0))(brace + lip_part)) - so.hole()(so.translate((0,depth/2.0,0))(so.rotate((90,0,0))(hole))))
 
     split = so.translate((0, -depth/2.0-chamfer, -gap/2.0))(so.cube((thickness + diameter + lip,depth+chamfer*2,gap)))
-    split_nut_recess = hex(screw_nut[screw]['width'], screw_nut[screw]['depth'])
-    split_nut_slide = so.translate((0,-screw_nut[screw]['width']/2))(so.cube((thickness + diameter, screw_nut[screw]['width'], screw_nut[screw]['depth'])))
+    split_nut_recess = so.translate((0,0,chamfer))(hex(screw_nut[screw]['width'], screw_nut[screw]['depth']))
+    split_nut_slide = so.translate((0,-screw_nut[screw]['width']/2, chamfer))(so.cube((thickness + diameter, screw_nut[screw]['width'], screw_nut[screw]['depth'])))
     split_bolt_hole = so.translate((0,0,-thickness*2-chamfer))(so.cylinder(r=screw_clearance[screw]/2.0, h=100))
-    split_head_recess = so.translate((0,0,-diameter-thickness*2.0))(so.cylinder(r=screw_head_sink[screw]['diameter']/2.0, h=diameter+thickness))
+    split_head_recess = so.translate((0,0,-diameter-thickness*2.5))(so.cylinder(r=screw_head_sink[screw]['diameter']/2.0, h=diameter+thickness))
     split_tensioner = so.translate(((diameter+lip)/2.0,0,thickness/2.0+chamfer))(split_nut_recess + split_bolt_hole + split_nut_slide + split_head_recess)
-    return holder - split - split_tensioner
+    return holder - split - so.hole()(split_tensioner)
 
-def counterweight(thickness=30, depth=50, length=55, cup_diameter=30, chamfer=1, cup_thickness=5,arm_screw='m4', arm_mount_dist=20, press_rod_diameter=12.66, gap=0.75):
+def counterweight(thickness=30, depth=50, length=55, cup_diameter=30, chamfer=1, cup_thickness=5,arm_screw='m4', arm_mount_dist=20, press_rod_diameter=13.06, gap=2):
     arm = chamfer_hull(x=True,y=True,z=[1])(so.translate((-thickness/2.0, -depth/2.0, 0))(so.cube((thickness,depth,length))))
     holder = so.translate((0,depth/2.0,length-cup_thickness))(chamfer_hull(x=True,y=True)(so.rotate((90,0,0))(so.cylinder(r=cup_diameter/2.0+cup_thickness, h=depth))) - so.hole()(so.translate((0,depth/2.0-cup_thickness,0))(so.rotate((90,0,0))(so.cylinder(r=cup_diameter/2.0, h=depth)))))
 
@@ -220,9 +252,12 @@ def counterweight(thickness=30, depth=50, length=55, cup_diameter=30, chamfer=1,
     nut_slide = so.translate((0,-screw_nut[arm_screw]['width']/2.0))(so.cube((thickness, screw_nut[arm_screw]['width'], screw_nut[arm_screw]['depth'])))
     nut_attachment = so.translate((0,0,10))(nut_slide + nut_recess) + bolt_hole
 
-    shaft_holder = split_lock(diameter=press_rod_diameter, depth=depth, shape='square', gap=gap)
-    rope_tie = so.translate((0,depth/2.0,length-cup_diameter/2.0-cup_thickness*2))(so.rotate((-90,90,0))(arch()))
-    return arm + holder - so.translate((0,arm_mount_dist/2.0,0))(nut_attachment) - so.translate((0,-arm_mount_dist/2.0,0))(nut_attachment) + so.translate((0,0,length+cup_diameter/2.0+cup_thickness))(so.rotate((0,-90,0))(shaft_holder)) + rope_tie
+    shaft_holder = so.translate((cup_thickness,-depth/4.0,0))(split_lock(diameter=press_rod_diameter, depth=depth/2.0, shape='square', gap=gap))
+    rope_tie = so.translate((0,depth/2.0+chamfer,length-cup_diameter/2.0-cup_thickness*2))(so.rotate((-90,90,0))(arch()))
+
+    plate_install_holes = so.translate((0,0,-0.1))(carraige_plate_install_holes(diameter=4.95))
+
+    return arm + holder - so.translate((0,arm_mount_dist/2.0,0))(nut_attachment) - so.translate((0,-arm_mount_dist/2.0,0))(nut_attachment) + so.translate((0,0,length+cup_diameter/2.0+cup_thickness))(so.rotate((0,-90,0))(shaft_holder)) + rope_tie - plate_install_holes
 
 
 def arch(thickness=5, hole_width=5, hole_height=5,chamfer=1):
@@ -237,22 +272,22 @@ def stopper(screw='m4'):
     bolt_hole = so.translate((0,0,-10))(so.cylinder(r=screw_clearance[screw]/2.0, h=20))
     nut_slide = so.translate((0,-screw_nut[screw]['width']/2.0))(so.cube((20, screw_nut[screw]['width'], screw_nut[screw]['depth'])))
     nut_attachment = so.rotate((0,-90,-90))(so.translate((0,0,-screw_nut[screw]['depth']/2.0))(nut_slide + nut_recess) + bolt_hole)
-    return body - so.rotate((0,0,180))(so.translate((0,-13,-10))(rail_section(20))) - so.translate((0,-5,0))(nut_attachment)
+    return body - so.rotate((0,0,180))(so.translate((0,-13,-10))(expand_for_fit(0.3)(rail_section(20)))) - so.translate((0,-5,0))(nut_attachment)
 
 
 wood_screw = countersunk_screw(5.9, 4.5, 10.8)
-scad = so.rotate((90,0,0))(double_side_rail(180, holes='m4')) # orient for printing
 scad = pulley()
 
 # NOTE the carriage has 4x m3 mounting holes with captive nuts centered on the edges of a rectangle approx. 34.8mm x 41.4mm
 scad = so.scale((25.4,25.4,25.4))(so.import_('LB-V1-CARRIAGE.stl'))
 scad = stopper()
-scad = so.rotate((90,0,0))(counterweight())
-scad = so.rotate((90,0,0))(iron_holder())
+scad = top_bracket()
+scad = so.rotate((90,0,0))(double_side_rail(180, holes='m4')) # orient for printing
 scad = base_bracket(mount_screw_hole=wood_screw)
 scad = pulley_arms()
-scad = top_bracket()
-scad = carriage_plate()
+scad = so.rotate((90,0,0))(carriage_plate())
+scad = so.rotate((90,0,0))(iron_holder())
+scad = so.rotate((90,0,0))(counterweight())
 
 #scad = arch()
 #scad=split_lock(diameter=8)
@@ -271,15 +306,15 @@ def render_stl(scad, stl):
 
 
 if False:
+    render_stl(so.rotate((90,0,0))(double_side_rail(250, holes='m4')), 'rail.stl')
     render_stl(base_bracket(mount_screw_hole=wood_screw), 'base_bracket.stl')
-    render_stl(so.rotate((90,0,0))(double_side_rail(180, holes='m4')), 'rail.stl')
     render_stl(top_bracket(), 'top_bracket.stl')
     render_stl(pulley_arms(), 'pulley_arms.stl')
     render_stl(pulley(), 'pulley.stl')
     render_stl(so.scale((25.4,25.4,25.4))(so.import_('LB-V1-CARRIAGE.stl')), '2x_carriage.stl')
     render_stl(so.scale((25.4,25.4,25.4))(so.import_('LB-V1-BEARING_COVER.stl')), '4x_carriage_bearing_cover.stl')
-    render_stl(carriage_plate(), '2x_carriage_plate.stl')
-    render_stl(iron_holder(), 'iron_holder.stl')
-    render_stl(counterweight(), 'counterweight.stl')
+    render_stl(so.rotate((90,0,0))(carriage_plate()), '2x_carriage_plate.stl')
+    render_stl(so.rotate((90,0,0))(iron_holder()), 'iron_holder.stl')
+    render_stl(so.rotate((90,0,0))(counterweight()), 'counterweight.stl')
     render_stl(stopper(), '2x_stopper.stl')
 print('done')
