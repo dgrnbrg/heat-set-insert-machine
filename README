@@ -1,0 +1,12 @@
+# 3D printable parametric heat-set insert press
+
+This press is inspired by the one from Adafruit.
+It holds a soldering iron on one side, and a metal bar on the other side.
+The metal bar is used to flatten the melted plastic that pushes up when the insert is placed.
+
+All of the hardware and dimensions are configurable in the code, so you can use whatever bolts you've got on hand.
+I used a mix of m3 and m4 hardware, and some wood screws I got at a local hardware store.
+
+This uses Square Rail Linear Ball Bearing by 3DPRINTINGWORLD on Thingiverse: https://www.thingiverse.com/thing:2816093 which are licensed under cc-nc.
+
+There's currently no license on this tool.
