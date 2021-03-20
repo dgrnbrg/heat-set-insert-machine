@@ -127,10 +127,10 @@ def countersunk_screw(diameter, depth, widest):
     head = so.cylinder(r1=diameter/2.0, r2=widest/2.0, h=depth)
     return so.translate((0,0,-100))(body) + so.translate((0,0,-depth))(head)
 
-def top_bracket(through_screw='m4', chamfer=1, clearance=0.25, bottom_thickness=12, height=30):
+def top_bracket(through_screw='m4', chamfer=1, clearance=0.25, bottom_thickness=10, height=30):
     body = bracket(bottom_thickness=bottom_thickness, chamfer=chamfer, height=height, clearance=clearance, through_offsets=[20])
-    d = screw_nut[through_screw]['depth'] + 2
-    nut_recess = so.translate((0,0,bottom_thickness-d))(hex(screw_nut[through_screw]['width'], d))
+    d = screw_nut[through_screw]['depth'] + 2.5
+    nut_recess = so.translate((0,0,bottom_thickness-d))(hex(screw_nut[through_screw]['width'], d+10))
 
     bolt_hole = so.cylinder(r=screw_clearance[through_screw]/2.0, h=bottom_thickness)
     return body - nut_recess - bolt_hole
@@ -158,7 +158,7 @@ def pulley_arms(height=40, through_screw='m4', arm_width=15, arm_thickness=7.5, 
     arms -= so.translate((0,0,height-arm_width/2.0))(bolt_hole)
 
     # add base mount hole
-    head_recess = so.translate((0,0,0))(so.cylinder(r=screw_head_sink[through_screw]['diameter']/2.0, h=screw_head_sink[through_screw]['h']*base_thickness))
+    head_recess = so.translate((0,0,-5))(so.cylinder(r=screw_head_sink[through_screw]['diameter']/2.0, h=screw_head_sink[through_screw]['h']*base_thickness))
     bolt_hole = so.translate((0,0,-base_thickness))(so.cylinder(r=screw_clearance[through_screw]/2.0, h=base_thickness*2.0))
     bolt_hole += head_recess
 
@@ -221,7 +221,7 @@ def iron_holder(thickness=20, depth=40, length=45, iron_diameter=20.5, chamfer=1
     nut_recess = hex(screw_nut[arm_screw]['width'], screw_nut[arm_screw]['depth'])
     bolt_hole = so.cylinder(r=screw_clearance[arm_screw]/2.0, h=10)
     nut_slide = so.translate((0,-screw_nut[arm_screw]['width']/2.0))(so.cube((thickness, screw_nut[arm_screw]['width'], screw_nut[arm_screw]['depth'])))
-    nut_attachment = so.translate((0,0,10))(nut_slide + nut_recess) + bolt_hole
+    nut_attachment = so.translate((0,0,5))(nut_slide + nut_recess) + bolt_hole
     plate_install_holes = so.translate((0,0,-0.1))(carraige_plate_install_holes(diameter=4.95))
     return counterweight_cup + arm + holder - so.translate((0,arm_mount_dist/2.0,0))(nut_attachment) - so.translate((0,-arm_mount_dist/2.0,0))(nut_attachment) + rope_tie - plate_install_holes
 
@@ -250,7 +250,7 @@ def counterweight(thickness=30, depth=50, length=55, cup_diameter=30, chamfer=1,
     nut_recess = hex(screw_nut[arm_screw]['width'], screw_nut[arm_screw]['depth'])
     bolt_hole = so.cylinder(r=screw_clearance[arm_screw]/2.0, h=10)
     nut_slide = so.translate((0,-screw_nut[arm_screw]['width']/2.0))(so.cube((thickness, screw_nut[arm_screw]['width'], screw_nut[arm_screw]['depth'])))
-    nut_attachment = so.translate((0,0,10))(nut_slide + nut_recess) + bolt_hole
+    nut_attachment = so.translate((0,0,5))(nut_slide + nut_recess) + bolt_hole
 
     shaft_holder = so.translate((cup_thickness,-depth/4.0,0))(split_lock(diameter=press_rod_diameter, depth=depth/2.0, shape='square', gap=gap))
     rope_tie = so.translate((0,depth/2.0+chamfer,length-cup_diameter/2.0-cup_thickness*2))(so.rotate((-90,90,0))(arch()))
@@ -281,13 +281,13 @@ scad = pulley()
 # NOTE the carriage has 4x m3 mounting holes with captive nuts centered on the edges of a rectangle approx. 34.8mm x 41.4mm
 scad = so.scale((25.4,25.4,25.4))(so.import_('LB-V1-CARRIAGE.stl'))
 scad = stopper()
-scad = top_bracket()
 scad = so.rotate((90,0,0))(double_side_rail(180, holes='m4')) # orient for printing
 scad = base_bracket(mount_screw_hole=wood_screw)
-scad = pulley_arms()
 scad = so.rotate((90,0,0))(carriage_plate())
-scad = so.rotate((90,0,0))(iron_holder())
 scad = so.rotate((90,0,0))(counterweight())
+scad = so.rotate((90,0,0))(iron_holder())
+scad = pulley_arms()
+scad = top_bracket()
 
 #scad = arch()
 #scad=split_lock(diameter=8)
@@ -305,7 +305,7 @@ def render_stl(scad, stl):
     print(f'complete!')
 
 
-if False:
+if True:
     render_stl(so.rotate((90,0,0))(double_side_rail(250, holes='m4')), 'rail.stl')
     render_stl(base_bracket(mount_screw_hole=wood_screw), 'base_bracket.stl')
     render_stl(top_bracket(), 'top_bracket.stl')
